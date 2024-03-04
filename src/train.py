@@ -16,8 +16,40 @@ env = TimeLimit(
 # Don't modify the methods names and signatures, but you can add methods.
 # ENJOY!
 class ProjectAgent:
-    def __init__(self, network):
-        self.network = network
+    def __init__(self):
+        # DQN config
+        """
+        config = {'nb_actions': env.action_space.n,
+                'learning_rate': 0.001,
+                'gamma': 0.95,
+                'buffer_size': 1000000,
+                'epsilon_min': 0.01,
+                'epsilon_max': 1.,
+                'epsilon_decay_period': 1000,
+                'epsilon_delay_decay': 20,
+                'batch_size': 20}
+        """
+        
+        config = {'nb_actions': env.action_space.n,
+                'learning_rate': 0.01,
+                'gamma': 0.90,
+                'buffer_size': 1000000,
+                'epsilon_min': 0.01,
+                'epsilon_max': 1.,
+                'epsilon_decay_period': 1000,
+                'epsilon_delay_decay': 10,
+                'batch_size': 1024,
+                'nb_grad_steps': 1}
+        
+        # DQN
+        nb_state = env.observation_space.shape[0]
+        nb_action = env.action_space.n
+        hidden_dim = 32
+        DQN = DQN_network(nb_state, hidden_dim, nb_action, nb_hid_lay=1)
+
+        # DQN agent
+        self.agent = dqn_agent(config, DQN)
+        self.network = DQN
     
     def act(self, observation, use_random=False):
         if use_random:
@@ -41,19 +73,20 @@ class DQN_network(nn.Module):
         self.output_layer = torch.nn.Linear(hidden_dim, nb_action)
         self.activation = torch.nn.ReLU()
         self.hidden_dim = hidden_dim
+        self.nb_hid_lay = nb_hid_lay
         """
         self.activation = torch.nn.ReLU()
         #self.activation = torch.nn.LeakyReLU()
         self.normalization = torch.nn.LayerNorm(hidden_dim)
         self.dropout = nn.Dropout(p=0.5)
         self.hidden_dim = hidden_dim
-        self.nb_hid_lay = nb_hid_lay
         """
     
     def forward(self, x):
         x = self.activation(self.input_layer(x))
 
         x = self.activation(self.hidden_layer(x))
+        
         """
         for layer in self.hidden_layers:
             x = self.activation(layer(x))
@@ -168,9 +201,13 @@ class dqn_agent:
                 """
                 if episode_cum_reward > max_cum_reward:
                     max_cum_reward = episode_cum_reward
-                    path_best_model = "dqn_ep" + str(init_nb_episode+episode) + "_lr" + str(config['learning_rate']) + "_" + str(self.model.nb_hid_lay) + "hid" + str(self.model.hidden_dim) + ".pth"
+                    path_best_model = "dqn_ep" + str(init_nb_episode+episode) + "_" + str(self.model.nb_hid_lay) + "hid" + str(self.model.hidden_dim) + ".pth"
                     torch.save(self.model.state_dict(), path_best_model)
                 """
+                if episode%100==0:
+                    path = "dqn_ep" + str(init_nb_episode+max_episode) + "_4hid" + str(self.model.hidden_dim) + ".pth"
+                    torch.save(self.model.state_dict(), path)
+
 
                 episode_cum_reward = 0
             else:
@@ -178,60 +215,27 @@ class dqn_agent:
 
         return episode_return#, path_best_model
 
-"""
+
 if __name__ == "__main__": # we train and save our agent model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     seed = 42
     torch.manual_seed(seed)
 
-    # DQN config
-    
-    config = {'nb_actions': env.action_space.n,
-            'learning_rate': 0.001,
-            'gamma': 0.95,
-            'buffer_size': 1000000,
-            'epsilon_min': 0.01,
-            'epsilon_max': 1.,
-            'epsilon_decay_period': 1000,
-            'epsilon_delay_decay': 20,
-            'batch_size': 20}
-    
-    config = {'nb_actions': env.action_space.n,
-            'learning_rate': 0.001,
-            'gamma': 0.98,
-            'buffer_size': 1000000,
-            'epsilon_min': 0.01,
-            'epsilon_max': 1.,
-            'epsilon_decay_period': 5000,
-            'epsilon_delay_decay': 100,
-            'batch_size': 512,
-            'nb_grad_steps': 1}
-    
-    # DQN
-    nb_state = env.observation_space.shape[0]
-    nb_action = env.action_space.n 
-    hidden_dim = 32
-    DQN = DQN_network(nb_state, hidden_dim, nb_action, nb_hid_lay=6)
-
-    # DQN agent
-    agent = dqn_agent(config, DQN)
-
     # Evaluation agent
-    eval_agent = ProjectAgent(DQN)
-    #eval_agent.load()
-    eval_agent.network.load_state_dict(torch.load("dqn_agent_1hid32_ep700.pth", map_location='cpu'))
-    max_episode = 200
-    #episode_return = agent.train(env, max_episode=max_episode, init_nb_episode=0)
-    init_nb_episode = 700
+    eval_agent = ProjectAgent()
+    eval_agent.load()
+    #eval_agent.network.load_state_dict(torch.load("dqn_agent_1hid32_ep700.pth", map_location='cpu'))
+    max_episode = 20
+    #episode_return = eval_agent.agent.train(env, max_episode=max_episode, init_nb_episode=0)
+    init_nb_episode = 300
     #eval_agent.network.load_state_dict(torch.load(path_best_model, map_location='cpu'))
-    #eval_agent.save(path="dqn_agent_1hid" + str(hidden_dim) + "_ep" + str(init_nb_episode+max_episode) + ".pth")
+    #eval_agent.save(path="dqn_ep" + str(init_nb_episode+max_episode) + "_2hid" + str(hidden_dim) + ".pth")
     eval_agent.network.eval()
     
     test = True
     if test:
         from evaluate import evaluate_HIV, evaluate_HIV_population
         score = evaluate_HIV(agent=eval_agent, nb_episode=1)
-        score_pop = evaluate_HIV_population(agent=eval_agent, nb_episode=15)
         print('score:', score)
+        score_pop = evaluate_HIV_population(agent=eval_agent, nb_episode=15)
         print('score population:', score_pop)
-"""
